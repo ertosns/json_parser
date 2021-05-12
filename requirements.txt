@@ -1,0 +1,2 @@
+pandas==1.2.4
+xmltodict==0.12.0

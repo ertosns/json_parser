@@ -19,3 +19,11 @@ python3 parser.py -fmt xml path/to/file.xml
 ```console
 python3 parser.py -fmt csv path/to/first.csv /path/to/second.csv
 ```
+
+
+# installation
+
+- to install requirement run the following:
+```console
+pip install -r ./requirements.txt
+```

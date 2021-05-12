@@ -1,9 +1,9 @@
-import pandas as pd
-import xmltodict
-import json
 import os
 import sys
+import json
 from argparse import ArgumentParser
+import pandas as pd
+import xmltodict
 
 XML = 1
 CSV = 2
