@@ -1,8 +1,4 @@
-import numpy as np
 import pandas as pd
-import matplotlib as plt
-import seaborn as sb
-import xml.etree.ElementTree as ET
 import xmltodict
 import json
 import os
@@ -13,51 +9,50 @@ XML = 1
 CSV = 2
 JSON = 3
 UNDEF = None
-FMTS = {1: 'xml', 2: 'csv', 3: 'json'}
-
+FMTS = {1: 'xml',
+        2: 'csv',
+        3: 'json'}
 
 def type_autodetect(file):
     '''
-    def try_xml():
-        pass
-    def try_csv():
-        pass
-    def try_json():
-        pass
-    # try possible types
-    if try_xml():
-        return XML
-    elif try_csv():
-        return CSV
-    elif try_json():
-        return JSON
-    else:
-        return UNDEF
+    TODO auto detect the file type
     '''
-    pass
+    return None
 
 class BaseFile(object):
     def __init__(self, file, format=None):
+        #note that file can be either path or list of path
         self.file = file
-        # verify that file exists
-        if self.file==None:
-            raise Exception("file can't be none")
-        elif not self.__exists__():
-            raise Exception("file doesn't exist, make sure your provide full path to the file\n")
-        # determine file format
-        fmt = self.file.split('.')[-1]
-        if fmt==FMTS[XML]:
-            self.format = XML
-        elif fmt==FMTS[CSV]:
-            self.format = CSV
-        elif fmt==FMTS[JSON]:
-            self.format = JSON
-        else:
-            self.format = type_autodetect(self.file)
-            #self.format = UNDEF
-        # set local variables
-        print('fmt: {}, file: {}, filename: {}'.format(self.format, self.file, os.path.split(self.file)[-1]))
-        self.file_name = os.path.join(FMTS[self.format], os.path.split(self.file)[-1])
+        if type(self.file)==str:
+            # verify that file exists
+            if self.file==None:
+                raise Exception("file can't be none")
+            elif not self.__exists__():
+                raise Exception("file doesn't exist, make sure your provide full path to the file\n")
+            # determine file format
+            if not format==None:
+                self.format = format
+            else:
+                fmt = self.file.split('.')[-1]
+                if fmt==FMTS[XML]:
+                    self.format = XML
+                elif fmt==FMTS[CSV]:
+                    self.format = CSV
+                elif fmt==FMTS[JSON]:
+                    self.format = JSON
+                else:
+                    self.format = type_autodetect(self.file)
+            self.file_name = os.path.join(FMTS[self.format], os.path.split(self.file)[-1])
+        elif type(self.file)==list:
+            # verify that file exists
+            if self.file==None:
+                raise Exception("file can't be none")
+            elif not len(self.file)==2:
+                raise Exception("you need to provide exactly two files customers, and vehicle files on the command line instead {} are give".format(len(self.file)))
+            elif not self.__all_exists__():
+                raise Exception("file doesn't exist, make sure your provide full path to the file\n")
+            self.format=format
+            self.file_name = [os.path.join(FMTS[self.format], os.path.split(f)[-1]) for f in self.file]
         self.json = {}
         self.df=None
     def __exists__(self):
@@ -66,11 +61,13 @@ class BaseFile(object):
             if  not os.path.exists(self.file):
                 return False
         return True
-
-    def open(self):
-        if not self.__exists__():
-            raise Exception("the file {} no longer exists!".format(self.file))
-        self.buff=open(self.file, 'r').read()
+    def __all_exists__(self):
+        for idx, f in enumerate(self.file):
+            if  not os.path.exists(f):
+                self.file[idx] = os.path.join(os.path.abspath(__file__), f)
+                if  not os.path.exists(self.file[idx]):
+                    return False
+        return True
     def to_json(self):
         '''
         virtual function implemented in the adapter.
@@ -79,7 +76,7 @@ class BaseFile(object):
     def view(self):
         print(self.df.head())
     def save(self):
-        with open('out.json', 'w') as outfile:
+        with open('./data/parsing_result/sample.json', 'w') as outfile:
             json.dump(self.json, outfile)
         #save file to the output dir.
 
@@ -88,7 +85,11 @@ class XMLFileAdapter(BaseFile):
         super().__init__(file, XML)
         # verify try to open XML file
     def to_json(self):
-        super().open()
+        # open file
+        if not super().__exists__():
+            raise Exception("the file {} no longer exists!".format(self.file))
+        self.buff=open(self.file, 'r').read()
+        #
         self.json = xmltodict.parse(self.buff)
 
         self.json = json.loads(json.dumps(self.json))
@@ -98,26 +99,70 @@ class XMLFileAdapter(BaseFile):
         self.df = pd.json_normalize(self.json['Transaction'])
 
 class CSVFileAdapter(BaseFile):
-    def __init__(self, file):
-        super().__init__(file, CSV)
+    def __init__(self, files):
+        '''
+        the csv file is divided into halves
+        '''
+        super().__init__(files, CSV)
+        self.l = self.file[0]
+        self.r = self.file[1]
+        self.l_df = pd.read_csv(self.l)
+        self.r_df = pd.read_csv(self.r)
+        if 'owner_id' in self.r_df.columns:
+            self.df=pd.merge(self.l_df, self.r_df, how='outer', left_on=['id'], right_on=['owner_id'])
+        else:
+            self.df=pd.merge(self.l_df, self.r_df, how='outer', right_on=['id'], left_on=['owner_id'])
+        self.tbls=[]
     def to_json(self):
-        self.df = pd.read_csv(self.file)
-        self.json = self.df.json
+        for index, row in self.df.iterrows():
+            # create tbl dict
+            tbl = {}
+            tbl['transaction'] = {}
+            # date
+            tbl['transaction']['date'] = row['date']
+            # customer
+            tbl['transaction']['customer'] = {}
+            tbl['transaction']['customer']['id'] = row['id_x']
+            tbl['transaction']['customer']['name'] = row['name']
+            tbl['transaction']['customer']['address'] = row['address']
+            tbl['transaction']['customer']['phone'] = row['phone']
+            # vehicles
+            if tbl['transaction'].get('vehicle')==None:
+                tbl['transaction']['vehicle'] = []
+            veh = {}
+            veh['id'] = row['id_y']
+            veh['make'] = row['make']
+            veh['vin_number'] = row['vin_number']
+            tbl['transaction']['vehicle'].append(veh)
+            # add transaction
+            # if the customer made any previous purchase, append the purcahse to the case customer
+            appended=False
+            for idx, prev_tbl in enumerate(self.tbls):
+                if prev_tbl['transaction']['customer']['id'] == row['id_x']:
+                    self.tbls[idx]['transaction']['vehicle'].append(veh)
+                    appended=True
+            if not appended:
+                self.tbls.append(tbl)
+        self.json = {}
         self.json['file_name'] = self.file_name
+        self.json['transactions'] = self.tbls
+        #self.json=json.loads(json.dumps(self.tbls))
+
 
 
 parser = ArgumentParser()
 parser.add_argument('-fmt', '--format', type=str, default=None)
-parser.add_argument('-f', '--file', type=str, default=None)
+parser.add_argument('file', type=str, nargs='+')
 args = parser.parse_args()
-print('args: {}, of type {}'.format(args, type(args)))
 force_format = args.format
 file_name = args.file
-
+print("format:{}, file: {}".format(force_format, file_name))
+if file_name==None:
+    file_name=sys.argv[-1]
 if force_format == FMTS[XML]:
-            reader=XMLFileAdapter(file_name)
+    reader=XMLFileAdapter(*file_name)
 elif force_format == FMTS[CSV]:
-            reader = CSVFileAdapter(file_name)
+    reader = CSVFileAdapter(file_name)
 reader.to_json()
 reader.view()
 reader.save()

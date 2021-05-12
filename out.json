@@ -1,1 +1,0 @@
-{"Transaction": {"Date": "2020-10-15", "Customer": {"@id": "ID1011601", "Name": "Aleena Chan", "Address": "3344 Joy Lane", "Phone": "818-537-1995", "Units": {"Vehicle": [{"@id": "V1000", "Make": "Nissan", "VinNumber": "JA32V6FV2DU023115"}, {"@id": "V1001", "Make": "Toyota", "VinNumber": "1FUJGLDR2DLB61105"}]}}}, "file_name": "xml/customer2.xml"}
